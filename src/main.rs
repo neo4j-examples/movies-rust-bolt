@@ -5,23 +5,25 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
-    Json, Router,
+    serve, Json, Router,
 };
-use eyre::Result;
+use color_eyre::eyre::{Report, Result};
 use futures::TryStreamExt as _;
 use neo4rs::{ConfigBuilder, Graph};
 use serde::{Deserialize, Serialize};
 use tower_http::{services::ServeDir, trace::TraceLayer};
-use tracing::instrument;
-use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+use tracing::{debug, instrument};
+use tracing_error::ErrorLayer;
+use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    color_eyre::install()?;
+
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(tracing_subscriber::fmt::layer())
+        .with(ErrorLayer::default())
         .init();
 
     let db = db().await?;
@@ -34,8 +36,8 @@ async fn main() -> Result<()> {
         .route("/search", get(search))
         .route("/graph", get(graph))
         .fallback_service(ServeDir::new("assets"))
-        .with_state(service)
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .with_state(service);
 
     let port = std::env::var("PORT")
         .ok()
@@ -44,9 +46,9 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::debug!("listening on {}", listener.local_addr().unwrap());
+    debug!("listening on {}", listener.local_addr().unwrap());
 
-    axum::serve(listener, app).await?;
+    serve(listener, app).await?;
 
     Ok(())
 }
@@ -152,9 +154,9 @@ impl Service {
 
         // TODO: make this possible
         // TODO: let summary = rows.finish().await?;
-        // TODO: tracing::debug!(?summary);
+        // TODO: debug!(?summary);
 
-        tracing::debug!(?movie);
+        debug!(?movie);
 
         Ok(movie)
     }
@@ -190,7 +192,7 @@ impl Service {
 
         let movies = rows.into_stream_as::<MovieResult>().try_collect().await?;
 
-        tracing::debug!(?movies);
+        debug!(?movies);
 
         Ok(movies)
     }
@@ -302,7 +304,7 @@ struct Link {
     target: usize,
 }
 
-struct AppError(eyre::Error);
+struct AppError(Report);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -316,11 +318,11 @@ impl IntoResponse for AppError {
 
 impl<E> From<E> for AppError
 where
-    E: Into<eyre::Error>,
+    E: Into<Report>,
 {
     fn from(err: E) -> Self {
         let err = err.into();
-        tracing::debug!("error: {}", err);
+        debug!("error: {:?}", err);
         Self(err)
     }
 }
