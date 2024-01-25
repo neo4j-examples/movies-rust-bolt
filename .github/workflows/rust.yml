@@ -1,0 +1,87 @@
+name: Rust
+
+on:
+  push:
+    branches: [ 'main' ]
+  pull_request:
+    branches: [ '**' ]
+  repository_dispatch:
+    types: [ 'movie-harness-change' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update --component clippy
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Setup Rust Problem Matchers
+        uses: r7kamura/rust-problem-matchers@v1
+      - name: Run cargo check
+        run: cargo +stable check
+      - name: Run clippy
+        run: cargo +stable clippy -- -D warnings
+      - name: Run cargo fmt
+        run: cargo +stable fmt -- --check
+      - name: Run cargo build
+        run: cargo +stable build
+
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable]
+        neo4j-version: [ "4.4", "4.4-enterprise", "5", "5-enterprise" ]
+    services:
+      neo4j:
+        image: neo4j:${{ matrix.neo4j-version }}
+        ports: [ "7687:7687" ]
+        env:
+          NEO4J_ACCEPT_LICENSE_AGREEMENT: yes
+          NEO4J_AUTH: "neo4j/neo4jpass"
+        options: >-
+          --name neo4j-e2e
+          --health-cmd "cypher-shell -u neo4j -p neo4jpass 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-start-period 10s
+          --health-retries 5
+          --volume /tmp:/movies
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        run: rustup toolchain install ${{ matrix.rust }} --profile minimal --no-self-update
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Download dataset
+        run: curl --fail --output /tmp/movies.cypher https://raw.githubusercontent.com/neo4j-graph-examples/movies/fb0e497e9e6a601fb55403586dd510aca73e471f/scripts/movies.cypher
+      - name: Import dataset
+        run: docker exec --interactive neo4j-e2e cypher-shell -u neo4j -p neo4jpass --file /movies/movies.cypher
+      - name: Build application
+        run: cargo +${{ matrix.rust }} build --release
+      - name: Check out test harness sources
+        uses: actions/checkout@v4
+        with:
+          repository: neo4j-examples/movies-harness
+          path: e2e
+      - uses: cypress-io/github-action@v6
+        env:
+          NEO4J_VERSION: ${{ matrix.neo4j-version }}
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_DATABASE: "neo4j"
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: neo4jpass
+          DEBUG: '@cypress/github-action'
+          RUST_LOG: 'movies_rust_bolt=debug,tower_http=debug,info'
+        with:
+          working-directory: e2e
+          browser: chrome
+          start: cargo +${{ matrix.rust }} run --manifest-path ../Cargo.toml --release
+          wait-on: 'http://localhost:8080/index.html'
+          wait-on-timeout: 300
