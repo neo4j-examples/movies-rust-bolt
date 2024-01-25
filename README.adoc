@@ -1,0 +1,81 @@
+== Neo4j Movies Application: Quick Start
+
+image::https://github.com/neo4j-examples/movies-rust-bolt/actions/workflows/rust.yml/badge.svg[CI]
+
+image::http://dev.assets.neo4j.com.s3.amazonaws.com/wp-content/uploads/movie_application.png[float=right,width=400]
+
+This example application demonstrates how easy it is to get started with https://neo4j.com/developer[Neo4j] in Rust.
+
+It is a very simple web application that uses our Movie graph dataset to provide a search with listing, a detail view and a graph visualization.
+
+=== The Stack
+
+These are the components of our Web Application:
+
+* Application Type:         Rust-Web Application
+* Web framework:            https://github.com/tokio-rs/axum[Axum-Rust] (Webframework)
+* Neo4j Database Connector: https://github.com/neo4j-labs/neo4rs[Neo4j-Rust-Driver] for Cypher https://docs.rs/neo4rs/[Docs]
+* Database:                 Neo4j-Server (5.x) with multi-database
+* Frontend:                 jquery, bootstrap, https://d3js.org/[d3.js]
+
+Provision a database quickly with https://sandbox.neo4j.com/?usecase=movies[Neo4j Sandbox] or https://neo4j.com/cloud/aura/[Neo4j Aura].
+
+=== Endpoints:
+
+Get Movie
+
+----
+// JSON object for single movie with cast
+curl http://localhost:8080/movie/The%20Matrix
+
+// list of JSON objects for movie search results
+curl http://localhost:8080/search?q=matrix
+
+// JSON object for whole graph viz (nodes, links - arrays)
+curl http://localhost:8080/graph
+----
+
+=== Setup
+
+Make sure to install the https://rustup.rs/[Rust toolchain].
+
+=== Run locally
+
+Just run:
+
+[source,shell]
+----
+cargo run --release
+----
+
+Go to http://localhost:8080.
+
+You can search for movies by title or and click on any entry.
+
+Or better you can run Neo4j locally to experiment with your own data.
+Start your local Neo4j Server in Neo4j Desktop (https://neo4j.com/download[Download & Install]), open Neo4j Browser.
+After logging in, install the Movies graph data set by entering the `:play movies` command, click the CREATE-statement, and hit the triangular "Run" button.
+
+
+=== Configuration options
+
+[%header,cols=2*]
+|===
+|Environment variable name
+|Default value (or N/A)
+
+|PORT
+|8080
+
+|NEO4J_URI
+|neo4j+s://demo.neo4jlabs.com
+
+|NEO4J_USER
+|movies
+
+|NEO4J_PASSWORD
+|movies
+
+|NEO4J_DATABASE
+|movies
+|===
