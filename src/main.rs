@@ -29,13 +29,15 @@ async fn main() -> Result<()> {
     let db = db().await?;
     let service = Service { db };
 
+    let assets_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
+
     let app = Router::new()
         .route("/", get(|| async { Redirect::temporary("/index.html") }))
         .route("/movie/:title", get(movie))
         .route("/movie/vote/:title", post(vote))
         .route("/search", get(search))
         .route("/graph", get(graph))
-        .fallback_service(ServeDir::new("assets"))
+        .fallback_service(ServeDir::new(assets_dir))
         .layer(TraceLayer::new_for_http())
         .with_state(service);
 
