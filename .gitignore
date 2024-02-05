@@ -39,3 +39,4 @@ tags
 [._]*.un~
 
 db/
+!.github/
