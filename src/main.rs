@@ -26,15 +26,15 @@ async fn main() -> Result<()> {
         .with(ErrorLayer::default())
         .init();
 
-    let db = db().await?;
+    let db = db()?;
     let service = Service { db };
 
     let assets_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
 
     let app = Router::new()
         .route("/", get(|| async { Redirect::temporary("/index.html") }))
-        .route("/movie/:title", get(movie))
-        .route("/movie/vote/:title", post(vote))
+        .route("/movie/{title}", get(movie))
+        .route("/movie/vote/{title}", post(vote))
         .route("/search", get(search))
         .route("/graph", get(graph))
         .fallback_service(ServeDir::new(assets_dir))
@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn db() -> Result<Graph> {
+fn db() -> Result<Graph> {
     const DEFAULT_URL: &str = "neo4j+s://demo.neo4jlabs.com";
     const DEFAULT_DATABASE: &str = "movies";
     const DEFAULT_USER: &str = "movies";
@@ -90,7 +90,7 @@ async fn db() -> Result<Graph> {
             .unwrap_or(DEFAULT_DATABASE))
         .build()?;
 
-    Ok(Graph::connect(config).await?)
+    Ok(Graph::connect(config)?)
 }
 
 async fn movie(
@@ -146,19 +146,10 @@ impl Service {
             .execute(neo4rs::query(FIND_MOVIE).param("title", title))
             .await?;
 
-        // TODO: next_as::<Movie>()?
-        let movie = rows
-            .next()
-            .await?
-            .map(|r| r.to::<Movie>())
-            .transpose()?
-            .unwrap_or_default();
+        let movie = rows.single_as::<Movie>().await?;
+        let summary = rows.finish().await?;
 
-        // TODO: make this possible
-        // TODO: let summary = rows.finish().await?;
-        // TODO: debug!(?summary);
-
-        debug!(?movie);
+        debug!(?summary, ?movie);
 
         Ok(movie)
     }
@@ -170,14 +161,14 @@ impl Service {
             SET movie.votes = coalesce(movie.votes, 0) + 1
             RETURN movie.votes";
 
-        self.db
+        let summary = self
+            .db
             .run(neo4rs::query(VOTE_IN_MOVIE).param("title", title))
             .await?;
 
-        // TODO:
-        // let summary = self.db.run(...).await?;
+        let updates = summary.stats().properties_set;
 
-        Ok(Voted { updates: 1 })
+        Ok(Voted { updates })
     }
 
     #[instrument(skip(self))]
@@ -187,7 +178,7 @@ impl Service {
           WHERE toLower(movie.title) CONTAINS toLower($part)
           RETURN movie";
 
-        let rows = self
+        let mut rows = self
             .db
             .execute(neo4rs::query(SEARCH_MOVIES).param("part", search.q))
             .await?;
@@ -284,7 +275,7 @@ struct Person {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Voted {
-    updates: usize,
+    updates: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
